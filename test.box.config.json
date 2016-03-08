@@ -1,0 +1,4 @@
+{
+  "Bearer": "test",
+  "baseUrl": "https://api.box.com/2.0/events"
+}

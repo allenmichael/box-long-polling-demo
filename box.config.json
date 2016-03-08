@@ -1,0 +1,4 @@
+{
+  "Bearer": "replace_with_developer_token",
+  "baseUrl": "https://api.box.com/2.0/events"
+}
