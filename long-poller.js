@@ -13,14 +13,6 @@ const errorMessage = function (response) {
         Status Message: ${response.statusMessage}`;
 }
 
-//Capture current Stream Position 
-let _currentStreamPosition;
-//Capture URL for Long Polling
-let _longPollUrl;
-//Capture message returned by Long Polling
-//Values: "new_change", "reconnect" -- enum for values in long-poll-message-values.js
-let _messageValue;
-
 /**
  * Retrieves the current Stream Position
  * @return 
@@ -87,7 +79,7 @@ function _startLongPolling(url) {
         resolve(JSON.parse(response.body));
       } else {
         //TODO: Create Error class for Box Errors
-        reject(new Error(`There was an error retrieving the long poll URL.
+        reject(new Error(`There was an error starting the long poll process.
         ${errorMessage(response) }`));
       }
     });
@@ -130,6 +122,14 @@ let LongPoller = function () { };
 LongPoller.prototype.run = function () {
   let self = this;
   
+  //Capture current Stream Position 
+  let _currentStreamPosition;
+  //Capture URL for Long Polling
+  let _longPollUrl;
+  //Capture message returned by Long Polling
+  //Values: "new_change", "reconnect" -- enum for values in long-poll-message-values.js
+  let _messageValue;
+  
   //Retrieve the current Stream Position
   _getStreamPosition()
     .then((streamPosition) => {
@@ -157,7 +157,14 @@ LongPoller.prototype.run = function () {
         //Retrieves the event data -- { stream_position: _currentStreamPosition } is used to add query parameters on the getEvent URL resource
         return _getEvent({ stream_position: _currentStreamPosition })
           .then((event) => {
-            console.log(`${event.event_id} | ${event.event_type}`);
+            //Logging if event returns as undefined
+            if (event === undefined) {
+              console.log("event data unavailable...");
+            }
+            //Safety check in case event comes back undefined
+            if (event && event.event_id && event.event_type) {
+              console.log(`${event.event_id} | ${event.event_type}`);
+            }
             //Recursively call this function to restart Long Polling
             self.run();
           });
