@@ -13,6 +13,40 @@ const errorMessage = function (response) {
         Status Message: ${response.statusMessage}`;
 }
 
+//The Object used outside of this module to interact with the private functions below.
+//TODO: Create general Box Client and allow LongPoller to inherit from this Client. 
+let LongPoller = function () { };
+
+//Capture current Stream Position 
+let _currentStreamPosition;
+//Capture URL for Long Polling
+let _longPollUrl;
+//Capture message returned by Long Polling
+//Values: "new_change", "reconnect" -- enum for values in long-poll-message-values.js
+let _messageValue;
+
+/**
+ * Sets the current Stream Position for the first time
+ * @return 
+ * @resolves {Promise<null>} returns a Promise that sets the _currentStreamPosition or, if not running for the first time, returns a Promise that resolves to null. 
+ */
+function _checkStreamPosition() {
+  return new Promise((resolve, reject) => {
+    if (_currentStreamPosition === undefined) { 
+      //Retrieve the current Stream Position using stream_position=now
+      _getStreamPosition()
+        .then((streamPosition) => {
+          console.log("Setting current stream position for the first time...");
+          //Set the current Stream Position variable
+          _currentStreamPosition = streamPosition;
+          resolve();
+        });
+    } else {
+      resolve();
+    }
+  });
+};
+
 /**
  * Retrieves the current Stream Position
  * @return 
@@ -101,7 +135,7 @@ function _getEvent(queryParams) {
     request(options, (err, response, body) => {
       if (err) { reject(err) };
       if (response.statusCode === 200) {
-        resolve(_.first(JSON.parse(response.body).entries));
+        resolve(JSON.parse(response.body));
       } else {
         //TODO: Create Error class for Box Errors
         reject(new Error(`There was an error retrieving the event.
@@ -111,30 +145,16 @@ function _getEvent(queryParams) {
   });
 };
 
-//The Object used outside of this module to interact with the private functions above.
-//TODO: Create general Box Client and allow LongPoller to inherit from this Client. 
-let LongPoller = function () { };
-
 /**
  * Used as the initialization method for this module when exporting. 
  * Run will call itself recursively to begin the Long Polling process again automatically.
  */
 LongPoller.prototype.run = function () {
   let self = this;
-  
-  //Capture current Stream Position 
-  let _currentStreamPosition;
-  //Capture URL for Long Polling
-  let _longPollUrl;
-  //Capture message returned by Long Polling
-  //Values: "new_change", "reconnect" -- enum for values in long-poll-message-values.js
-  let _messageValue;
-  
-  //Retrieve the current Stream Position
-  _getStreamPosition()
-    .then((streamPosition) => {
-      //Set the current Stream Position variable
-      _currentStreamPosition = streamPosition;
+
+  _checkStreamPosition()
+    .then(() => {
+      console.log(`Current Stream Position: ${_currentStreamPosition}`);
       //Retrieve the Long Polling URL
       return _getLongPollUrl();
     })
@@ -160,10 +180,22 @@ LongPoller.prototype.run = function () {
             //Logging if event returns as undefined
             if (event === undefined) {
               console.log("event data unavailable...");
+              //Set the _currentStreamPosition to undefined in edge case for unavailable event data
+              //This fires the logic in _checkStreamPosition to use stream_position=now to retrieve the current stream position
+              _currentStreamPosition = undefined;
             }
             //Safety check in case event comes back undefined
-            if (event && event.event_id && event.event_type) {
-              console.log(`${event.event_id} | ${event.event_type}`);
+            if (event) {
+              //Set the _currentStreamPosition to use the next_stream_position from the event data
+              //Avoids missing events while long polling
+              _currentStreamPosition = event.next_stream_position;
+              //Safety check to verify the event has entries
+              if (event.entries && event.entries.length > 0) {
+                //Handle one or more entries in the entries array
+                event.entries.forEach((entry) => {
+                  console.log(`${entry.event_id} | ${entry.event_type}`);
+                });
+              }
             }
             //Recursively call this function to restart Long Polling
             self.run();
